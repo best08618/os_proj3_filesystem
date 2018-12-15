@@ -12,6 +12,7 @@
 #include <time.h>
 #include "fs.h"
 
+
 #define CHILDNUM 2
 #define INDEXNUM 16
 #define FRAMENUM 32
@@ -35,13 +36,6 @@ pid_t pid[CHILDNUM];
 int pid_index;
 int fo_num = 0 ;
 
-struct Foqueue{
-	int fo_num;
-    int q_inode;
-    struct Foqueue *next;	
-};
-
-
 struct msgbuf{
 	long int  mtype;
 	int pid_index;
@@ -49,8 +43,14 @@ struct msgbuf{
 	unsigned int  virt_mem;
 	char file_name[32];
 	int foqueue;
-	//struct Foqueue* foqueue;
 };
+
+struct Node{
+	int fo_num;
+	int inode;
+	struct Node *next;	
+};
+
 
 typedef struct{
 	int valid;
@@ -61,7 +61,6 @@ typedef struct{
 typedef struct{
 	char* data;
 }PHY_TABLE;
-
 
 TABLE table[CHILDNUM][INDEXNUM];
 PHY_TABLE phy_mem [FRAMENUM];
@@ -77,68 +76,50 @@ int msgq;
 int ret;
 int key = 0x12345;
 struct msgbuf msg;
-struct Foqueue* foqueue;
+struct Node* node = NULL;
+struct Node* head = NULL;
 
-void insertFirst(struct Foqueue** head_queue, int )
-{	
-	struct Foqueue* new_queue = (struct Foqueue*) malloc(sizeof(struct Foqueue));
-	//new_queue -> q_inode = new_inode;
-	new_queue -> next = (*head_queue);
-	(*head_queue) = new_queue;
+void insertNode(struct Node* node)
+{
+	if(head == NULL)
+	{
+		head = node;
+	}
+	else
+	{
+		head ->next = node ;
+	}
 	return;
 }
 
-void insertAfter(struct Foqueue** pre_queue, int new_inode)
+void printList(struct Node* node)
 {
-	if(pre_queue == NULL)
+	while(node != NULL)
 	{
-		printf("Null previous queue data\n");
-		return;
+		printf(" fo_num : %d, inode : %d\n", node -> fo_num, node -> inode);
+		node = node -> next;
 	}
-	struct Foqueue* new_queue = (struct Foqueue*) malloc(sizeof(struct Foqueue));
-	new_queue -> q_inode = new_inode;
-	(*pre_queue) -> next = new_queue;
-	return;
 }
 
-void printList(struct Foqueue* foqueue)
+int traverseList(struct Node* node)
 {
-	printf("Inode in the list :");
-	while (foqueue!= NULL)
-	{
-		printf(" %d ", foqueue-> q_inode);
-		foqueue = foqueue->next;
-	}
-	printf("\n");
-	return;
-}
-
-void deleteInode(struct Foqueue** head_queue, int del_inode)
-{
-	if(*head_queue == NULL)
-		return;
 	
-	struct Foqueue* temp = *head_queue;
-	
-	if(del_inode == 0) //remove first inode in queue
+	while(node != NULL)
 	{
-		*head_queue = temp -> next;
-		free(temp);
-		return;
+		if(node -> fo_num == 0)	
+		{
+			printf("traverse and found,");
+			printf(" inode : %d \n", node -> inode);
+			return node -> fo_num;
+		}
+		else 
+		{
+			node = node -> next;
+		}
 	}
 
-	for(int i =0; temp!=NULL && i<del_inode -1; i++) //find the previous inode of the inode to be deleted
-		temp = temp->next;
-	
-	if(temp == NULL || temp->next == NULL)
-		return;
-	
-	struct Foqueue* next = temp ->next->next; //temp->next is the inode to be deleted
-	
-	free(temp->next);
+	printf("cannot find fo_num in the list\n");
 
-	temp->next = next;
-	
 }
 
 void init_partition()
@@ -196,12 +177,13 @@ void root_file() //print root files
 	}
 
 }
-void open_file(char* file_name,int fo_num){
+void open_file(char* file_name,unsigned int vm, int fo_num){
 
 	memset(&msg,0,sizeof(msg));
 	msg.mtype = IPC_NOWAIT;
 	msg.pid_index = i;
 	msg.msg_mode = OPEN;
+	msg.virt_mem = vm;
 	char* sp = file_name;
 	int l = 0; 
 	while(*sp){
@@ -209,10 +191,7 @@ void open_file(char* file_name,int fo_num){
 		l++;
 		sp++;
 	}
-	//insertFirst(&foqueue,fo_num);
-	//printList(foqueue);
-	msg.foqueue = fo_num;	
-
+	msg.foqueue = fo_num;
 	ret = msgsnd(msgq, &msg, sizeof(msg),IPC_NOWAIT);
 	if(ret == -1)
 		perror("msgsnd error");
@@ -265,7 +244,7 @@ void child_function(){
 	printf("VM : %x\n",vm);
 	sprintf(file_name,"file_%d",file_num);
 	printf("CHILD FUNCTION :FIle name : %s\n",file_name);
-	open_file(file_name,fo_num++);
+	open_file(file_name,vm,fo_num++);
 
 }
 
@@ -331,9 +310,7 @@ int main(int argc,char* argv[])
 				int mode = msg.msg_mode;
 				if( mode == OPEN){
 					char file_name[32];
-					//struct Foqueue* foqueue_rec = msg.foqueue;
-					//insertFirst(&foqueue,msg.foqueue);
-					int fo_num = msg.foqueue;
+					int foqueue = msg.foqueue;
 					char* sp = msg.file_name;
 					int l = 0;
 					while(*sp){
@@ -341,16 +318,19 @@ int main(int argc,char* argv[])
 						l++;
 						sp++;
 					}
-
 					printf("file name :%s\n",file_name);
-					foqueue -> q_inode=find_user_file(file_name);
-					//foqueue -> fo_num = fo_num;
-					insertFirst(foqueue, fo_num);
-					printf("inode:%d\n",foqueue -> q_inode);
-					printList(foqueue);
+					foQueue[foqueue]=find_user_file(file_name);
+
+					node = (struct Node*)malloc (sizeof(struct Node));
+					node -> fo_num = foqueue;
+					node -> inode = foQueue[foqueue];
+					node -> next = NULL;
+					insertNode(node);
+					printList(node);
+
+					traverseList(node);
 					return 0;
 				}
-				
 			}
 			memset(&msg, 0, sizeof(msg));
 		}
