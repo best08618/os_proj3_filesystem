@@ -87,7 +87,8 @@ void insertNode(struct Node* node)
 	}
 	else
 	{
-		head ->next = node ;
+		node -> next = head;
+		head = node ;
 	}
 	return;
 }
@@ -101,7 +102,7 @@ void printList(struct Node* node)
 	}
 }
 
-int traverseList(struct Node* node)
+int traverseList(struct Node* node) //after inserting node, start traversing from the head
 {
 	
 	while(node != NULL)
