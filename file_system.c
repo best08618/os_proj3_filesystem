@@ -12,7 +12,6 @@
 #include <time.h>
 #include "fs.h"
 
-
 #define CHILDNUM 2
 #define INDEXNUM 16
 #define FRAMENUM 32
@@ -36,6 +35,13 @@ pid_t pid[CHILDNUM];
 int pid_index;
 int fo_num = 0 ;
 
+struct Foqueue{
+	int fo_num;
+    int q_inode;
+    struct Foqueue *next;	
+};
+
+
 struct msgbuf{
 	long int  mtype;
 	int pid_index;
@@ -43,6 +49,7 @@ struct msgbuf{
 	unsigned int  virt_mem;
 	char file_name[32];
 	int foqueue;
+	//struct Foqueue* foqueue;
 };
 
 typedef struct{
@@ -55,9 +62,9 @@ typedef struct{
 	char* data;
 }PHY_TABLE;
 
+
 TABLE table[CHILDNUM][INDEXNUM];
 PHY_TABLE phy_mem [FRAMENUM];
-//int fpl = 0;
 int fpl[32];
 int fpl_rear, fpl_front =0;
 
@@ -70,7 +77,69 @@ int msgq;
 int ret;
 int key = 0x12345;
 struct msgbuf msg;
+struct Foqueue* foqueue;
 
+void insertFirst(struct Foqueue** head_queue, int )
+{	
+	struct Foqueue* new_queue = (struct Foqueue*) malloc(sizeof(struct Foqueue));
+	//new_queue -> q_inode = new_inode;
+	new_queue -> next = (*head_queue);
+	(*head_queue) = new_queue;
+	return;
+}
+
+void insertAfter(struct Foqueue** pre_queue, int new_inode)
+{
+	if(pre_queue == NULL)
+	{
+		printf("Null previous queue data\n");
+		return;
+	}
+	struct Foqueue* new_queue = (struct Foqueue*) malloc(sizeof(struct Foqueue));
+	new_queue -> q_inode = new_inode;
+	(*pre_queue) -> next = new_queue;
+	return;
+}
+
+void printList(struct Foqueue* foqueue)
+{
+	printf("Inode in the list :");
+	while (foqueue!= NULL)
+	{
+		printf(" %d ", foqueue-> q_inode);
+		foqueue = foqueue->next;
+	}
+	printf("\n");
+	return;
+}
+
+void deleteInode(struct Foqueue** head_queue, int del_inode)
+{
+	if(*head_queue == NULL)
+		return;
+	
+	struct Foqueue* temp = *head_queue;
+	
+	if(del_inode == 0) //remove first inode in queue
+	{
+		*head_queue = temp -> next;
+		free(temp);
+		return;
+	}
+
+	for(int i =0; temp!=NULL && i<del_inode -1; i++) //find the previous inode of the inode to be deleted
+		temp = temp->next;
+	
+	if(temp == NULL || temp->next == NULL)
+		return;
+	
+	struct Foqueue* next = temp ->next->next; //temp->next is the inode to be deleted
+	
+	free(temp->next);
+
+	temp->next = next;
+	
+}
 
 void init_partition()
 {
@@ -141,7 +210,10 @@ void open_file(char* file_name,unsigned int vm, int fo_num){
 		l++;
 		sp++;
 	}
-	msg.foqueue = fo_num;
+	//insertFirst(&foqueue,fo_num);
+	//printList(foqueue);
+	msg.foqueue = fo_num;	
+
 	ret = msgsnd(msgq, &msg, sizeof(msg),IPC_NOWAIT);
 	if(ret == -1)
 		perror("msgsnd error");
@@ -221,7 +293,6 @@ void initialize_phymem(){
 int main(int argc,char* argv[])
 {
 
-
 	for(int h=0; h<FRAMENUM; h++)
 	{
 		fpl[h] = h;
@@ -261,7 +332,9 @@ int main(int argc,char* argv[])
 				int mode = msg.msg_mode;
 				if( mode == OPEN){
 					char file_name[32];
-					int foqueue = msg.foqueue;
+					//struct Foqueue* foqueue_rec = msg.foqueue;
+					//insertFirst(&foqueue,msg.foqueue);
+					int fo_num = msg.foqueue;
 					char* sp = msg.file_name;
 					int l = 0;
 					while(*sp){
@@ -271,8 +344,11 @@ int main(int argc,char* argv[])
 					}
 
 					printf("file name :%s\n",file_name);
-					foQueue[foqueue]=find_user_file(file_name);
-					printf("inode:%d\n",foQueue[foqueue]);
+					foqueue -> q_inode=find_user_file(file_name);
+					//foqueue -> fo_num = fo_num;
+					insertFirst(foqueue, fo_num);
+					printf("inode:%d\n",foqueue -> q_inode);
+					printList(foqueue);
 					return 0;
 				}
 				
