@@ -196,13 +196,12 @@ void root_file() //print root files
 	}
 
 }
-void open_file(char* file_name,unsigned int vm, int fo_num){
+void open_file(char* file_name,int fo_num){
 
 	memset(&msg,0,sizeof(msg));
 	msg.mtype = IPC_NOWAIT;
 	msg.pid_index = i;
 	msg.msg_mode = OPEN;
-	msg.virt_mem = vm;
 	char* sp = file_name;
 	int l = 0; 
 	while(*sp){
@@ -266,7 +265,7 @@ void child_function(){
 	printf("VM : %x\n",vm);
 	sprintf(file_name,"file_%d",file_num);
 	printf("CHILD FUNCTION :FIle name : %s\n",file_name);
-	open_file(file_name,vm,fo_num++);
+	open_file(file_name,fo_num++);
 
 }
 
