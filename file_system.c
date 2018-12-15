@@ -24,7 +24,6 @@ struct partition tf;//total file
 int root_node;
 struct inode* root_ptr;
 int user_node;
-struct inode* user_ptr;
 char buffer[1024];
 int block_num=0;
 int block_store[0x6];
@@ -127,25 +126,6 @@ void root_file() //print root files
 	}
 
 }
-void open_file(char* file_name,int fo_num){
-
-	memset(&msg,0,sizeof(msg));
-	msg.mtype = IPC_NOWAIT;
-	msg.pid_index = i;
-	msg.msg_mode = OPEN;
-	char* sp = file_name;
-	int l = 0; 
-	while(*sp){
-		msg.file_name[l] = file_name [l];
-		l++;
-		sp++;
-	}
-	msg.foqueue = fo_num;
-	ret = msgsnd(msgq, &msg, sizeof(msg),IPC_NOWAIT);
-	if(ret == -1)
-		perror("msgsnd error");
-
-}
 
 int find_user_file(char* file_name)
 {
@@ -168,8 +148,7 @@ int find_user_file(char* file_name)
 			{
 				printf("found %s, enter inode %d\n", *den->n_pad, den->inode);
 				user_node = den->inode;
-				user_ptr = &tf.inode_table[user_node];
-				printf("datablocks size : %dbytes\n", user_ptr -> size);
+				printf("datablocks size : %dbytes\n", tf.inode_table[user_node].size);
 				find = 1;
 				break;
 			}
@@ -183,18 +162,53 @@ int find_user_file(char* file_name)
 }
 
 
+void open_file(char* file_name,int fo_num){
+
+	memset(&msg,0,sizeof(msg));
+	msg.mtype = IPC_NOWAIT;
+	msg.pid_index = i;
+	msg.msg_mode = OPEN;
+	char* sp = file_name;
+	int l = 0;
+	while(*sp){
+		msg.file_name[l] = file_name [l];
+		l++;
+		sp++;
+	}
+	msg.foqueue = fo_num;
+	ret = msgsnd(msgq, &msg, sizeof(msg),IPC_NOWAIT);
+	if(ret == -1)
+		perror("msgsnd error");
+
+}
+
+void read_file(int user_fo,unsigned int vm){
+
+	memset(&msg,0,sizeof(msg));
+	msg.mtype = IPC_NOWAIT;
+	msg.pid_index = i;
+	msg.msg_mode = READ;
+	msg.foqueue = user_fo;
+	ret = msgsnd(msgq, &msg, sizeof(msg),IPC_NOWAIT);
+	if(ret == -1)
+		perror("msgsnd error");
+}
+
 void child_function(){
 	int file_num = 1;
 	char file_name[32];
 	unsigned int addr;
+	int user_fo;
 	addr = (rand() %0x09)<<12;
 	addr |= (rand()%0xfff);
 	unsigned int vm = addr;
 	printf("VM : %x\n",vm);
 	sprintf(file_name,"file_%d",file_num);
 	printf("CHILD FUNCTION :FIle name : %s\n",file_name);
+	user_fo = fo_num;
 	open_file(file_name,fo_num++);
-
+	read_file(user_fo,vm);
+	exit(0);
 }
 
 void initialize_table()
@@ -215,6 +229,33 @@ void initialize_phymem(){
 	for(int l =0 ; l <FRAMENUM ; l++)
 		phy_mem[l].data = NULL;
 	printf("Initialize phymem\n");
+}
+void find_user_data(int user_node)
+{
+	struct inode* user_ptr;
+	user_ptr = &tf.inode_table[user_node];
+	user_db_size = user_ptr -> size;
+	block_num =0;
+
+	while(user_db_size > 0)
+	{
+		block_store[block_num]=user_ptr->blocks[block_num];
+		printf("data block : %d\n", block_store[block_num]);
+		block_num ++;
+		user_db_size = user_db_size - 1000;
+	}
+
+	for(int l = 0; l< block_num; l++)
+	{
+		struct blocks* bp = &tf.data_blocks[block_store[l]];
+		printf("Read block : %d\n",block_store[l]);
+		for(int a=0; a< 1024; a++)
+		{
+			buffer[a] = bp->d[a];
+		}
+		printf("data : %s\n", buffer);
+	}
+
 }
 
 int main(int argc,char* argv[])
@@ -272,7 +313,13 @@ int main(int argc,char* argv[])
 					printf("file name :%s\n",file_name);
 					foQueue[foqueue]=find_user_file(file_name);
 					printf("inode:%d\n",foQueue[foqueue]);
-					return 0;
+				}
+				else if (mode == READ)
+				{
+					printf("Read mode\n");
+					int foqueue = msg.foqueue;
+					find_user_data(foQueue[foqueue]);
+					return 0 ;				
 				}
 				
 			}
