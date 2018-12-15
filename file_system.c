@@ -202,7 +202,7 @@ void read_file(int* user_fo,unsigned int* vm){
 void child_function(){
 	
 	int file_num = 15;
-	char file_name[ENTRYNUM][32];
+	char file_name[ENTRYNUM][32]={0};
 	unsigned int addr;
 	unsigned int vm[ENTRYNUM];
 
