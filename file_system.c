@@ -18,6 +18,7 @@
 #define FRAMENUM 32
 #define OPEN 0
 #define READ 1
+#define CLOSE 3
 #define ENTRYNUM 2
 
 FILE* fptr;
@@ -42,14 +43,14 @@ struct msgbuf{
 	int pid_index;
 	int msg_mode;
 	unsigned int  virt_mem[ENTRYNUM];
-	char file_name[ENTRYNUM][32];
+	char file_name[ENTRYNUM][16];
 	int foqueue[ENTRYNUM];
 };
 
 typedef struct{
 	int valid;
 	int pfn;
-	int read_only;
+	int fo_num;
 }TABLE;
 
 struct Node{
@@ -96,10 +97,11 @@ void insertNode(struct Node* node)
 
 void printList(struct Node* node)
 {
-	while(node != NULL)
+	struct Node * walking = node;
+	while(walking != NULL)
 	{
-		printf(" fo_num : %d, inode : %d\n", node -> fo_num, node -> inode);
-		node = node -> next;
+		printf(" fo_num : %d, inode : %d\n", walking -> fo_num, walking -> inode);
+		walking = walking -> next;
 	}
 }
 
@@ -121,9 +123,36 @@ int traverseList(int  fo_num) //after inserting node, start traversing from the 
 	}
 
 	printf("cannot find fo_num in the list\n");
+	perror("ERROR !!!!! No file \n");
+	msgctl(msgq, IPC_RMID, NULL);
+	exit(0);
 
 }
+void eraseList(int erase_num){
 
+	struct Node * walking = head;
+	struct Node * pre = NULL;
+	while(walking != NULL){
+		if(walking -> fo_num == erase_num ){
+			//printf("Find list \n");
+			if(pre == NULL)
+				head = walking -> next;
+			else{
+				pre->next =walking -> next;
+			}
+			//free(walking);
+			return ;
+		}
+		else{
+			pre = walking;
+			walking = walking -> next;
+		}
+
+	}
+
+
+
+}
 void init_partition()
 {
 	/* ======================read superblock=========================*/
@@ -211,7 +240,7 @@ int find_user_file(char* file_name)
 }
 
 
-void open_file(char(* file_name)[32],int* fo_num){
+void open_file(char(* file_name)[16],int* fo_num){
 
 	memset(&msg,0,sizeof(msg));
 	msg.mtype = IPC_NOWAIT;
@@ -249,25 +278,38 @@ void read_file(int* user_fo,unsigned int* vm){
 	if(ret == -1)
 		perror("msgsnd error");
 }
+void close_file(int user_fo){
+	memset(&msg,0,sizeof(msg));
+        msg.mtype = IPC_NOWAIT;
+	msg.msg_mode = CLOSE;
+	msg.foqueue[0] = user_fo;
+	ret = msgsnd(msgq, &msg, sizeof(msg),IPC_NOWAIT);
+	if(ret == -1)
+                perror("msgsnd error");
+}
 
 void child_function(){
 	
 	int file_num = 15;
-	char file_name[ENTRYNUM][32]={0};
+	char file_name[ENTRYNUM][16];
 	unsigned int addr;
 	unsigned int vm[ENTRYNUM];
-
+	memset(&file_name,0,sizeof(file_name));
 	for (int l = 0 ; l < 2; l ++){
 		addr = (rand() %0x09)<<12;
 		addr |= (rand()%0xfff);
 		vm[l] = addr;
 		printf("VM : %04x\n",vm[l]);
-		sprintf(file_name[l],"file_%d",file_num++);
+		sprintf(file_name[l],"file_%d",file_num);
+		file_num ++;
 		printf("Send FIle name : %s\n",file_name[l]);
 		user_fo[l] = fo_num++;
 	}
 
 	open_file(file_name,user_fo);
+	read_file(user_fo,vm);
+	int close_num = 0;
+	close_file(close_num);
 	read_file(user_fo,vm);
 	exit(0);
 }
@@ -278,8 +320,8 @@ void initialize_table()
 		for(int j =0; j< INDEXNUM ; j++)
 		{
 			table[a][j].valid =0;
-			table[a][j].pfn = 0;
-			table[a][j].read_only = 0;
+			table[a][j].pfn = -1;
+			table[a][j].fo_num = -1;
 		}
 	}
 	printf("Initialize table\n");
@@ -363,7 +405,8 @@ int main(int argc,char* argv[])
 				printf("pid index: %d\n", pid_index);
 				int mode = msg.msg_mode;
 				if( mode == OPEN){
-					char file_name[ENTRYNUM][32];
+					printf("=========================Open Mode ==========================\n");
+					char file_name[ENTRYNUM][16];
 					int foqueue[ENTRYNUM]; 
 					int user_inode;
 					for(int j =0 ; j < ENTRYNUM ; j++){
@@ -382,12 +425,13 @@ int main(int argc,char* argv[])
 						node -> inode = user_inode;
 						node -> next = NULL;
 						insertNode(node);
-						printList(node);
+						printList(head);
 						printf("inode:%d\n",user_inode);
 					}
 				}
 				else if (mode == READ)
 				{
+					printf("=========================Read Mode ==========================\n");
 					for(int j = 0 ; j < ENTRYNUM ; j ++){
 						virt_mem[j] = msg.virt_mem[j];
 						offset[j] = virt_mem[j] & 0xfff;
@@ -400,6 +444,7 @@ int main(int argc,char* argv[])
 							if(fpl_front != fpl_rear)
 							{
 								table[pid_index][pageIndex[j]].pfn=fpl[fpl_front%FRAMENUM];
+								table[pid_index][pageIndex[j]].fo_num = foqueue;
 								printf("VA %d -> PA %d\n", pageIndex[j],  table[pid_index][pageIndex[j]].pfn);
 								table[pid_index][pageIndex[j]].valid = 1;
 								fpl_front++;
@@ -418,9 +463,31 @@ int main(int argc,char* argv[])
 							printf("In the disk\n");
 						}
 					}
-					msgctl(msgq, IPC_RMID, NULL);
-					 return 0;
+					//msgctl(msgq, IPC_RMID, NULL);
+					 //return 0;
 						
+				}
+				else if (mode == CLOSE)
+				{
+					printf("=========================Close Mode ==========================\n");
+					int close_num = msg.foqueue[0];
+					printf("close num is %d\n",close_num);
+					for(int j = 0 ; j < INDEXNUM ; j++)
+					{
+						if(table[pid_index][j].fo_num == close_num){
+							table[pid_index][j].valid = 0 ;
+							fpl[(fpl_rear++)%FRAMENUM] = table[pid_index][j].pfn;
+							phy_mem[table[pid_index][j].pfn].data = NULL; 
+							printf("Free pfn :%d\n",table[pid_index][j].pfn);
+						}	
+
+					}	 
+
+					eraseList(close_num);
+					printList(head);
+				//	msgctl(msgq, IPC_RMID, NULL);
+				//	return 0;
+					
 				}
 				
 			}
