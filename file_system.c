@@ -52,6 +52,12 @@ typedef struct{
 	int read_only;
 }TABLE;
 
+struct Node{
+	int fo_num;
+	int inode;
+	struct Node *next;	
+};
+
 typedef struct{
 	char* data;
 }PHY_TABLE;
@@ -65,13 +71,58 @@ int fpl_rear, fpl_front =0;
 unsigned int pageIndex[ENTRYNUM];
 unsigned int virt_mem[ENTRYNUM];
 unsigned int offset[ENTRYNUM];
-int foQueue[10];
+//int foQueue[10];
 
 int msgq;
 int ret;
 int key = 0x12346;
 struct msgbuf msg;
+struct Node* node = NULL;
+struct Node* head = NULL;
 
+void insertNode(struct Node* node)
+{
+	if(head == NULL)
+	{
+		head = node;
+	}
+	else
+	{
+		node -> next = head;
+		head = node ;
+	}
+	return;
+}
+
+void printList(struct Node* node)
+{
+	while(node != NULL)
+	{
+		printf(" fo_num : %d, inode : %d\n", node -> fo_num, node -> inode);
+		node = node -> next;
+	}
+}
+
+int traverseList(int  fo_num) //after inserting node, start traversing from the head
+{
+	struct Node * walking  = head;
+	while(walking != NULL)
+	{
+		if(walking -> fo_num == fo_num)	
+		{
+			printf("traverse and found,");
+			printf(" inode : %d \n", walking -> inode);
+			return walking -> inode;
+		}
+		else 
+		{
+			walking = walking -> next;
+		}
+	}
+
+	printf("cannot find fo_num in the list\n");
+
+}
 
 void init_partition()
 {
@@ -314,6 +365,7 @@ int main(int argc,char* argv[])
 				if( mode == OPEN){
 					char file_name[ENTRYNUM][32];
 					int foqueue[ENTRYNUM]; 
+					int user_inode;
 					for(int j =0 ; j < ENTRYNUM ; j++){
 						foqueue[j]= msg.foqueue[j];
 						char* sp = msg.file_name[j];
@@ -324,8 +376,14 @@ int main(int argc,char* argv[])
 							sp++;
 						}
 						printf("file name :%s\n",file_name[j]);
-						foQueue[foqueue[j]]=find_user_file(file_name[j]);
-						printf("inode:%d\n",foQueue[foqueue[j]]);
+						user_inode=find_user_file(file_name[j]);
+						node = (struct Node*)malloc (sizeof(struct Node));
+						node -> fo_num = foqueue[j];
+						node -> inode = user_inode;
+						node -> next = NULL;
+						insertNode(node);
+						printList(node);
+						printf("inode:%d\n",user_inode);
 					}
 				}
 				else if (mode == READ)
@@ -345,7 +403,7 @@ int main(int argc,char* argv[])
 								printf("VA %d -> PA %d\n", pageIndex[j],  table[pid_index][pageIndex[j]].pfn);
 								table[pid_index][pageIndex[j]].valid = 1;
 								fpl_front++;
-								dp= find_user_data(foQueue[foqueue]);
+								dp= find_user_data(traverseList(foqueue));
 								phy_mem[table[pid_index][pageIndex[j]].pfn].data = dp;
 							}
 							else
