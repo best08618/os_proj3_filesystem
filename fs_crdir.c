@@ -352,8 +352,6 @@ void child_function(){
 	create_dir();
 	char* dir_name =  "OS_proj";
 	print_dir(dir_name);
-//	close_file(close_num);
-///	read_file(user_fo,vm);
 	exit(0);
 }
 
@@ -389,7 +387,7 @@ char* find_root_empty(){
 	{ //only read 1 data block
 		den = (struct dentry *) sp;
 		sp += den->dir_length;
-		printf("%s ",*den->n_pad);
+		//printf("%s ",*den->n_pad);
 	}
 	return sp;
 }
@@ -572,6 +570,7 @@ int main(int argc,char* argv[])
 							l++;
 							sp++;
 						}
+						file_name[j][l] = '\0';
 						printf("file name :%s\n",file_name[j]);
 						user_inode=find_user_file(file_name[j]);
 						node = (struct Node*)malloc (sizeof(struct Node));
