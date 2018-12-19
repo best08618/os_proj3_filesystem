@@ -18,8 +18,10 @@
 #define FRAMENUM 32
 #define OPEN 0
 #define READ 1
-#define CLOSE 3
-#define CREATE_DIR 4
+#define CLOSE 2
+#define CREATE_DIR 3
+#define PRINT_DIR 4
+
 #define ENTRYNUM 2
 void create_directory();
 FILE* fptr;
@@ -195,10 +197,10 @@ void first_inode() //size of data block, number of data blocks
 
 }
 
-void root_file() //print root files
+void root_file(char* s) //print root files
 {
 	/* ============================Read every file in root ================*/
-	printf("\n=======================Root dir files==========================\n");
+	printf("\n=======================%s dir files==========================\n",s);
 	for(int l = 0; l< root_bn; l ++)
 	{
 		struct blocks* bp = &tf.data_blocks[root_block[l]];
@@ -231,7 +233,7 @@ int find_user_file(char* file_name)
 			den = (struct dentry *) sp;
 			sp += den->dir_length;
 			read_size += den->dir_length;
-			printf("file name : %s\n",*den->n_pad);
+			//printf("file name : %s\n",*den->n_pad);
 
 			if(strcmp(*den->n_pad, file_name) == 0) //to find if file_1 exist
 			{
@@ -262,6 +264,7 @@ void open_file(char(* file_name)[16],int* fo_num){
 			l++;
 			sp++;
 		}
+		file_name[j][l] = '\0';
 		msg.foqueue[j] = fo_num[j];
 	}
 	ret = msgsnd(msgq, &msg, sizeof(msg),IPC_NOWAIT);
@@ -306,6 +309,25 @@ void create_dir(){
 
 
 }
+void print_dir(char* dir_name){
+
+	memset(&msg,0,sizeof(msg));
+	msg.mtype = IPC_NOWAIT;
+	msg.pid_index = i;
+	msg.msg_mode = PRINT_DIR;
+	char* sp ;
+	sp = dir_name;
+	int l = 0;
+	while(*sp){
+		msg.file_name[0][l] = dir_name[l];
+		l++;
+		sp++;
+	}
+	ret = msgsnd(msgq, &msg, sizeof(msg),IPC_NOWAIT);
+	if(ret == -1)
+		perror("msgsnd error");
+
+}
 void child_function(){
 	
 	int file_num = 15;
@@ -328,6 +350,8 @@ void child_function(){
 	read_file(user_fo,vm);
 	int close_num = 0;
 	create_dir();
+	char* dir_name =  "OS_proj";
+	print_dir(dir_name);
 //	close_file(close_num);
 ///	read_file(user_fo,vm);
 	exit(0);
@@ -370,6 +394,18 @@ char* find_root_empty(){
 	return sp;
 }
 
+void find_dir(char* dir_name){
+	first_inode();
+	//root_file();
+	for(int l = 0 ; l < 0x6; l ++)
+		block_store[l] =root_block[l];
+	int new_dir = find_user_file(dir_name);
+	printf("new dir : %d",new_dir);
+	root_ptr = &tf.inode_table[new_dir];
+        first_inode();
+        root_file(dir_name);
+	return;
+}
 void create_directory(){
 	char* dp;
 	/*==================root 에 directory 추가 =================*/
@@ -385,7 +421,7 @@ void create_directory(){
 	for(int j =0 ; j < strlen(filename)+ 1 ;j++)
 		ins_dentry.n_pad[0][j]=filename[j];
 	memcpy(dp,&ins_dentry,sizeof(ins_dentry));
-	root_file();
+	root_file("Root");
 	/*======================================*/
 
 	/*============node 정보 추가 =================*/
@@ -420,13 +456,13 @@ void create_directory(){
         for(int j =0 ; j < (strlen(filename)+1 );j++)
                 dir_file[1].n_pad[0][j]=filename[j];
 
-	printf("file : %s",*(dir_file[1].n_pad));
+	//printf("file : %s",*(dir_file[1].n_pad));
 	memcpy(dp,&dir_file[0],sizeof(dir_file[0])); 
 	memcpy(dp+sizeof(dir_file[0]),&dir_file[1],sizeof(dir_file[1]));	
-	root_node = 103;
+	/*root_node = 103;
 	root_ptr = &tf.inode_table[root_node];
 	first_inode();
-	root_file();
+	root_file();*/
 }
 
 
@@ -499,7 +535,7 @@ int main(int argc,char* argv[])
 
 	init_partition();
 	first_inode();
-	root_file();
+	root_file("root");
 	/*==================================================*/
 	pid[i]= fork();
 	if(pid[0] == -1){
@@ -611,14 +647,28 @@ int main(int argc,char* argv[])
 				{
 					printf("====================Create Directory=========================== \n ");
 					create_directory();
-					msgctl(msgq, IPC_RMID, NULL);
-					return 0;
+					//msgctl(msgq, IPC_RMID, NULL);
 
 					//root_file();
 
 				}
-				
-			}
+				else if (mode ==  PRINT_DIR)	
+				{
+					
+				 	printf("====================Print Directory=========================== \n ");
+					char* dir_p =  msg.file_name[0];
+					char dir_name[16];
+					int l = 0;
+					while(*dir_p){
+						dir_name[l] = msg.file_name[0][l];
+						l++;
+						dir_p++;
+					}
+					find_dir(dir_name);
+					msgctl(msgq, IPC_RMID, NULL);
+					return 0;	
+				}
+			}	
 			memset(&msg, 0, sizeof(msg));
 			//msgctl(msgq, IPC_RMID, NULL);
 		}
