@@ -654,7 +654,6 @@ int main(int argc,char* argv[])
 				else if (mode ==  PRINT_DIR)	
 				{
 					
-				 	printf("====================Print Directory=========================== \n ");
 					char* dir_p =  msg.file_name[0];
 					char dir_name[16];
 					int l = 0;
